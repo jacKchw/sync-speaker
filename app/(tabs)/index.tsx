@@ -4,6 +4,7 @@ import { Button, StyleSheet } from "react-native";
 import ParallaxScrollView from "@/components/ParallaxScrollView";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { useDelay } from "@/hooks/useDelay";
 
 import { useAudioPlayer } from "expo-audio";
 import { Directory, File, Paths } from "expo-file-system/next";
@@ -105,6 +106,7 @@ const TimePickerPlayer = ({ audioFile }: { audioFile: File }) => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [startAtDate, setStartAtDate] = useState<Date>(new Date());
   const [showPlayer, setShowPlayer] = useState(false);
+  const [delay, loading, error, checkDelay] = useDelay();
 
   const onChange = (event: any, selectedDate?: Date) => {
     setShowTimePicker(false);
@@ -120,6 +122,10 @@ const TimePickerPlayer = ({ audioFile }: { audioFile: File }) => {
   return (
     <ThemedView>
       <Button onPress={() => setShowTimePicker(true)} title="select time" />
+      <Button onPress={checkDelay} title="check time delay" />
+      <ThemedText>
+        Delay: {error ? error : loading ? "loading" : delay}
+      </ThemedText>
 
       {showTimePicker && (
         <DateTimePicker
@@ -133,7 +139,10 @@ const TimePickerPlayer = ({ audioFile }: { audioFile: File }) => {
 
       {showPlayer && (
         <ThemedView>
-          <Player audioFile={audioFile} startAt={startAtDate.getTime()} />
+          <Player
+            audioFile={audioFile}
+            startAt={startAtDate.getTime() - delay}
+          />
           <Button
             onPress={() => {
               setShowPlayer(false);
