@@ -7,9 +7,144 @@ import { ThemedView } from "@/components/ThemedView";
 
 import { useAudioPlayer } from "expo-audio";
 import { Directory, File, Paths } from "expo-file-system/next";
-import { useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
+
+const Player = ({
+  audioFile,
+  startAt,
+}: {
+  audioFile: File;
+  startAt: number;
+}) => {
+  const player = useAudioPlayer(audioFile);
+  const [untilTime, setUntilTime] = useState<number>(() => {
+    return startAt - Date.now();
+  });
+  const clockIntervalRef = useRef<number>(null);
+  const clockTimeoutRef = useRef<number>(null);
+
+  const updateCurrentDate = () => {
+    const currentTime = Date.now();
+    const diff = startAt - currentTime;
+    if (diff < 0) return;
+    if (diff < 10000 && clockTimeoutRef.current == null) {
+      clockTimeoutRef.current = setTimeout(playAudio, diff);
+    }
+
+    startTransition(() => {
+      setUntilTime(diff);
+    });
+  };
+
+  const cleanUp = () => {
+    if (clockIntervalRef.current) {
+      clearInterval(clockIntervalRef.current);
+      clockIntervalRef.current = null;
+    }
+    if (clockTimeoutRef.current) {
+      clearTimeout(clockTimeoutRef.current);
+      clockTimeoutRef.current = null;
+    }
+  };
+
+  const playAudio = () => {
+    player.play();
+    cleanUp();
+  };
+
+  useEffect(() => {
+    player.seekTo(0);
+    // set interval
+    if (clockIntervalRef.current) {
+      clearInterval(clockIntervalRef.current);
+    }
+
+    if (startAt - Date.now() < 0) {
+      // todo: handle late start
+      return;
+    }
+
+    clockIntervalRef.current = setInterval(updateCurrentDate, 1000);
+
+    return () => {
+      // clean up clock interval
+      cleanUp();
+    };
+  }, []);
+
+  return (
+    <ThemedView>
+      <ThemedText>Start in</ThemedText>
+      <ThemedView
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 5,
+          justifyContent: "center",
+        }}
+      >
+        <ThemedText type="clock">
+          {Math.floor(untilTime / 1000 / 60)}
+        </ThemedText>
+        <ThemedText>m</ThemedText>
+        <ThemedText type="clock">
+          {Math.floor((untilTime / 1000) % 60)
+            .toString()
+            .padStart(2, "0")}
+        </ThemedText>
+        <ThemedText>s</ThemedText>
+      </ThemedView>
+    </ThemedView>
+  );
+};
+
+const TimePickerPlayer = ({ audioFile }: { audioFile: File }) => {
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [startAtDate, setStartAtDate] = useState<Date>(new Date());
+  const [showPlayer, setShowPlayer] = useState(false);
+
+  const onChange = (event: any, selectedDate?: Date) => {
+    setShowTimePicker(false);
+    if (!selectedDate) return;
+    const currentDate = selectedDate;
+    if (currentDate.getTime() - Date.now() < 0) {
+      return;
+    }
+    setStartAtDate(currentDate);
+    setShowPlayer(true);
+  };
+
+  return (
+    <ThemedView>
+      <Button onPress={() => setShowTimePicker(true)} title="select time" />
+
+      {showTimePicker && (
+        <DateTimePicker
+          testID="dateTimePicker"
+          value={startAtDate}
+          mode="time"
+          is24Hour={true}
+          onChange={onChange}
+        />
+      )}
+
+      {showPlayer && (
+        <ThemedView>
+          <Player audioFile={audioFile} startAt={startAtDate.getTime()} />
+          <Button
+            onPress={() => {
+              setShowPlayer(false);
+            }}
+            title="reset"
+          />
+        </ThemedView>
+      )}
+    </ThemedView>
+  );
+};
 
 const getDir = () => {
   const destination = new Directory(Paths.document, "audios");
@@ -19,123 +154,28 @@ const getDir = () => {
   return destination;
 };
 
-const Player = ({ fileName }: { fileName: string }) => {
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [playDate, setPlayDate] = useState<Date>(new Date());
-  const [untilTime, setUntilTime] = useState<number>();
-  const clockIntervalRef = useRef<number>(null);
-  const clockTimeoutRef = useRef<number>(null);
-
-  const onChange = (event: any, selectedDate?: Date) => {
-    setShowTimePicker(false);
-    if (!selectedDate) return;
-    const currentDate = selectedDate;
-    if (currentDate.getTime() - Date.now() < 0) {
-      return;
-    }
-    setPlayDate(currentDate);
-  };
-
-  const direactory = getDir();
-  const file = new File(direactory, fileName);
-  const player = useAudioPlayer(file);
-
-  const updateCurrentDate = () => {
-    const currentTime = Date.now();
-    const diff = playDate.getTime() - currentTime;
-    if (diff < 0) return;
-    if (diff < 10000 && clockTimeoutRef.current == null) {
-      clockTimeoutRef.current = setTimeout(playAudio, diff);
-    }
-    setUntilTime(diff);
-  };
-
-  const clearClock = () => {
-    if (clockIntervalRef.current) {
-      clearInterval(clockIntervalRef.current);
-    }
-  };
-
-  const startCountDown = async () => {
-    if (clockIntervalRef.current) {
-      clearInterval(clockIntervalRef.current);
-    }
-
-    if (playDate.getTime() - Date.now() < 0) {
-      return;
-    }
-
-    clockIntervalRef.current = setInterval(updateCurrentDate, 1000);
-    await player.seekTo(0);
-  };
-
-  const playAudio = async () => {
-    player.play();
-
-    if (clockIntervalRef.current) {
-      clearInterval(clockIntervalRef.current);
-    }
-    if (clockTimeoutRef.current) {
-      clearTimeout(clockTimeoutRef.current);
-    }
-  };
-
-  return (
-    <ThemedView>
-      <Button onPress={() => setShowTimePicker(true)} title="Start At" />
-
-      {showTimePicker && (
-        <DateTimePicker
-          testID="dateTimePicker"
-          value={playDate}
-          mode="time"
-          is24Hour={true}
-          onChange={onChange}
-        />
-      )}
-
-      <Button onPress={startCountDown} title="Play"></Button>
-      {clockIntervalRef.current && (
-        <Button onPress={clearClock} title="Reset"></Button>
-      )}
-      {untilTime && (
-        <ThemedView>
-          <ThemedText>Start in</ThemedText>
-          <ThemedText>{Math.floor(untilTime / 1000 / 60)}m</ThemedText>
-          <ThemedText>{Math.floor((untilTime / 1000) % 60)}s</ThemedText>
-        </ThemedView>
-      )}
-    </ThemedView>
-  );
-};
-
-const fileName = "001.m4a";
-
 export default function HomeScreen() {
+  const audioDirectory = getDir();
+  const fileName = "001.m4a";
+  const audioFile = new File(audioDirectory, fileName);
+
   const [downloadStatus, setDownloadStatus] = useState<
-    undefined | "loading" | "success"
-  >(undefined);
-  const [isExist, setIsExist] = useState(() => {
-    const directory = getDir();
-    const file = new File(directory, fileName);
-    return file.exists;
+    undefined | "loading" | "downloaded"
+  >(() => {
+    if (audioFile.exists) return "downloaded";
   });
+
   const download = async () => {
     setDownloadStatus("loading");
     const url = `${process.env.EXPO_PUBLIC_API_URL}/${fileName}`;
 
-    const destination = getDir();
-    const output = await File.downloadFileAsync(url, destination);
-    setDownloadStatus("success");
-    setIsExist(true);
+    await File.downloadFileAsync(url, audioDirectory);
+    setDownloadStatus("downloaded");
   };
 
   const deleteFile = () => {
-    if (!isExist) return;
-    const directory = getDir();
-    const file = new File(directory, fileName);
-    file.delete();
-    setIsExist(false);
+    if (downloadStatus !== "downloaded") return;
+    audioFile.delete();
     setDownloadStatus(undefined);
   };
 
@@ -155,20 +195,20 @@ export default function HomeScreen() {
       <Button
         onPress={download}
         title="Download"
-        disabled={downloadStatus != undefined || isExist}
+        disabled={downloadStatus != undefined}
       />
 
-      <Button onPress={deleteFile} title="Delete" disabled={!isExist} />
-      {isExist && <Player fileName={fileName} />}
+      <Button
+        onPress={deleteFile}
+        title="Delete"
+        disabled={downloadStatus != "downloaded"}
+      />
+      {downloadStatus == "downloaded" && (
+        <TimePickerPlayer audioFile={audioFile} />
+      )}
 
       <ThemedView style={styles.titleContainer}>
-        <ThemedText>
-          {downloadStatus == "loading"
-            ? "Downloading"
-            : downloadStatus == "success"
-            ? "Download Successful"
-            : ""}
-        </ThemedText>
+        <ThemedText>{downloadStatus == "loading" && "Downloading"}</ThemedText>
       </ThemedView>
     </ParallaxScrollView>
   );
